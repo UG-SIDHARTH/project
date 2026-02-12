@@ -12,7 +12,7 @@ let processedData = {
 };
 
 let deviceHistory = {};
-const OFFLINE_TIMEOUT = 30000; // 30 seconds
+const OFFLINE_TIMEOUT = 30000;
 
 /* ===== RECEIVE DATA FROM ESP32 ===== */
 app.post('/api/devices', (req, res) => {
@@ -99,7 +99,7 @@ app.get('/', (req, res) => {
 <!DOCTYPE html>
 <html>
 <head>
-<title>ESP32 Device Monitor PRO</title>
+<title>ESP32 Monitor</title>
 <style>
 body { background:black; color:#00ff00; font-family:Courier New; text-align:center; }
 table { width:95%; margin:auto; border-collapse:collapse; margin-bottom:20px; }
@@ -110,7 +110,7 @@ th, td { padding:8px; border-bottom:1px solid #003300; }
 </head>
 <body>
 
-<h1>ESP32 DEVICE MONITOR PRO</h1>
+<h1>ESP32 DEVICE MONITOR</h1>
 
 <h2>WiFi Only</h2>
 <table><tbody id="wifiOnly"></tbody></table>
