@@ -2,9 +2,12 @@ const express = require('express');
 const cors = require('cors');
 
 const app = express();
+
+/* ========= MIDDLEWARE ========= */
 app.use(express.json());
 app.use(cors());
 
+/* ========= MEMORY STORAGE ========= */
 let latestData = {
     deviceCount: 0,
     devices: []
@@ -12,12 +15,20 @@ let latestData = {
 
 /* ========= ESP32 DATA RECEIVER ========= */
 app.post('/api/devices', (req, res) => {
-    latestData = req.body;
+    try {
+        latestData = req.body;
 
-    console.log("📡 Data received from ESP32:");
-    console.log(JSON.stringify(req.body, null, 2));
+        console.log("📡 Data received from ESP32:");
+        console.log(JSON.stringify(req.body, null, 2));
 
-    res.status(200).json({ message: "Data received successfully" });
+        res.status(200).json({
+            success: true,
+            message: "Data received successfully"
+        });
+    } catch (error) {
+        console.error("❌ Error receiving data:", error);
+        res.status(500).json({ success: false });
+    }
 });
 
 /* ========= API FOR FRONTEND ========= */
@@ -25,7 +36,7 @@ app.get('/api/dashboard', (req, res) => {
     res.json(latestData);
 });
 
-/* ========= FRONTEND DASHBOARD ========= */
+/* ========= ROOT ROUTE ========= */
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -88,15 +99,18 @@ function fetchData() {
     fetch('/api/dashboard')
     .then(res => res.json())
     .then(data => {
-        document.getElementById('count').innerText = data.deviceCount;
+        document.getElementById('count').innerText = data.deviceCount || 0;
 
         let table = "";
-        data.devices.forEach(d => {
-            table += "<tr><td>" + d.mac + "</td><td>" + d.ip + "</td></tr>";
-        });
+        if (data.devices && data.devices.length > 0) {
+            data.devices.forEach(d => {
+                table += "<tr><td>" + d.mac + "</td><td>" + d.ip + "</td></tr>";
+            });
+        }
 
         document.getElementById('deviceTable').innerHTML = table;
-    });
+    })
+    .catch(err => console.error("Fetch error:", err));
 }
 
 setInterval(fetchData, 2000);
@@ -108,6 +122,9 @@ fetchData();
     `);
 });
 
-app.listen(5000, () => {
-    console.log("🚀 Server running on http://localhost:5000");
+/* ========= START SERVER ========= */
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+    console.log("🚀 Server running on port " + PORT);
 });
