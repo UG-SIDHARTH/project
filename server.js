@@ -5,101 +5,161 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-let latestData = {
-    deviceCount: 0,
-    devices: []
+let processedData = {
+    wifiOnly: [],
+    bleOnly: [],
+    bothDevices: []
 };
 
-/* ========= ESP32 DATA RECEIVER ========= */
+let deviceHistory = {};
+
+const OFFLINE_TIMEOUT = 30000; // 30 seconds
+
+/* ===== RECEIVE DATA ===== */
 app.post('/api/devices', (req, res) => {
-    latestData = req.body;
 
-    console.log("📡 Data received from ESP32:");
-    console.log(JSON.stringify(req.body, null, 2));
+    const { wifiDevices = [], bleDevices = [] } = req.body;
 
-    res.status(200).json({ message: "Data received successfully" });
+    const wifiSet = new Set(wifiDevices);
+    const bleSet = new Set(bleDevices);
+
+    let wifiOnly = [];
+    let bleOnly = [];
+    let bothDevices = [];
+
+    wifiSet.forEach(mac => {
+        if (bleSet.has(mac)) {
+            bothDevices.push(mac);
+        } else {
+            wifiOnly.push(mac);
+        }
+    });
+
+    bleSet.forEach(mac => {
+        if (!wifiSet.has(mac)) {
+            bleOnly.push(mac);
+        }
+    });
+
+    processedData = { wifiOnly, bleOnly, bothDevices };
+
+    const now = Date.now();
+
+    const currentDevices = [...wifiOnly, ...bleOnly, ...bothDevices];
+
+    currentDevices.forEach(mac => {
+
+        let type = "UNKNOWN";
+        if (wifiOnly.includes(mac)) type = "WiFi";
+        if (bleOnly.includes(mac)) type = "Bluetooth";
+        if (bothDevices.includes(mac)) type = "BOTH";
+
+        if (!deviceHistory[mac]) {
+            deviceHistory[mac] = {
+                firstSeen: now,
+                lastSeen: now,
+                connectionType: type,
+                totalActiveTime: 0,
+                status: "Online"
+            };
+        } else {
+            let previousLastSeen = deviceHistory[mac].lastSeen;
+
+            deviceHistory[mac].lastSeen = now;
+            deviceHistory[mac].connectionType = type;
+            deviceHistory[mac].status = "Online";
+
+            deviceHistory[mac].totalActiveTime += (now - previousLastSeen);
+        }
+    });
+
+    res.status(200).json({ message: "Processed" });
 });
 
-/* ========= API FOR FRONTEND ========= */
+/* ===== CHECK OFFLINE DEVICES ===== */
+setInterval(() => {
+    const now = Date.now();
+
+    for (let mac in deviceHistory) {
+        if (now - deviceHistory[mac].lastSeen > OFFLINE_TIMEOUT) {
+            deviceHistory[mac].status = "Offline";
+        }
+    }
+}, 5000);
+
+/* ===== DASHBOARD API ===== */
 app.get('/api/dashboard', (req, res) => {
-    res.json(latestData);
+    res.json({
+        ...processedData,
+        history: deviceHistory
+    });
 });
 
-/* ========= FRONTEND DASHBOARD ========= */
+/* ===== FRONTEND ===== */
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-<title>ESP32 Network Dashboard</title>
+<title>ESP32 Advanced Monitor</title>
 <style>
-body {
-    font-family: Arial;
-    background: #0f172a;
-    color: white;
-    text-align: center;
-}
-h1 {
-    color: #00ffcc;
-}
-.card {
-    background: #1e293b;
-    padding: 20px;
-    margin: 20px auto;
-    width: 80%;
-    border-radius: 12px;
-}
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-th, td {
-    padding: 10px;
-    border-bottom: 1px solid #444;
-}
-th {
-    color: #00ffcc;
-}
+body { background:black; color:#00ff00; font-family:Courier New; text-align:center; }
+table { width:95%; margin:auto; border-collapse:collapse; margin-bottom:20px; }
+th, td { padding:8px; border-bottom:1px solid #003300; }
+.online { color:#00ff00; }
+.offline { color:red; }
 </style>
 </head>
 <body>
 
-<h1>ESP32 Network Monitoring Dashboard</h1>
+<h1>ESP32 DEVICE MONITOR PRO</h1>
 
-<div class="card">
-<h2>Connected Devices: <span id="count">0</span></h2>
-</div>
+<h2>Device History</h2>
 
-<div class="card">
 <table>
 <thead>
 <tr>
-<th>MAC Address</th>
-<th>IP Address</th>
+<th>MAC</th>
+<th>First Seen</th>
+<th>Last Seen</th>
+<th>Type</th>
+<th>Status</th>
+<th>Total Active Time (sec)</th>
 </tr>
 </thead>
-<tbody id="deviceTable">
-</tbody>
+<tbody id="historyTable"></tbody>
 </table>
-</div>
 
 <script>
-function fetchData() {
-    fetch('/api/dashboard')
-    .then(res => res.json())
-    .then(data => {
-        document.getElementById('count').innerText = data.deviceCount;
+function fetchData(){
+fetch('/api/dashboard')
+.then(res=>res.json())
+.then(data=>{
 
-        let table = "";
-        data.devices.forEach(d => {
-            table += "<tr><td>" + d.mac + "</td><td>" + d.ip + "</td></tr>";
-        });
+let historyHTML="";
+for (let mac in data.history){
+let d = data.history[mac];
 
-        document.getElementById('deviceTable').innerHTML = table;
-    });
+let first = new Date(d.firstSeen).toLocaleString();
+let last = new Date(d.lastSeen).toLocaleString();
+let seconds = Math.floor(d.totalActiveTime / 1000);
+
+historyHTML += "<tr>";
+historyHTML += "<td>"+mac+"</td>";
+historyHTML += "<td>"+first+"</td>";
+historyHTML += "<td>"+last+"</td>";
+historyHTML += "<td>"+d.connectionType+"</td>";
+historyHTML += "<td class='"+(d.status=="Online"?"online":"offline")+"'>"+d.status+"</td>";
+historyHTML += "<td>"+seconds+"</td>";
+historyHTML += "</tr>";
 }
 
-setInterval(fetchData, 2000);
+document.getElementById("historyTable").innerHTML = historyHTML;
+
+});
+}
+
+setInterval(fetchData,2000);
 fetchData();
 </script>
 
