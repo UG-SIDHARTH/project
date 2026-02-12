@@ -12,10 +12,9 @@ let processedData = {
 };
 
 let deviceHistory = {};
-
 const OFFLINE_TIMEOUT = 30000; // 30 seconds
 
-/* ===== RECEIVE DATA ===== */
+/* ===== RECEIVE DATA FROM ESP32 ===== */
 app.post('/api/devices', (req, res) => {
 
     const { wifiDevices = [], bleDevices = [] } = req.body;
@@ -44,7 +43,6 @@ app.post('/api/devices', (req, res) => {
     processedData = { wifiOnly, bleOnly, bothDevices };
 
     const now = Date.now();
-
     const currentDevices = [...wifiOnly, ...bleOnly, ...bothDevices];
 
     currentDevices.forEach(mac => {
@@ -73,10 +71,10 @@ app.post('/api/devices', (req, res) => {
         }
     });
 
-    res.status(200).json({ message: "Processed" });
+    res.status(200).json({ message: "Processed successfully" });
 });
 
-/* ===== CHECK OFFLINE DEVICES ===== */
+/* ===== OFFLINE CHECK ===== */
 setInterval(() => {
     const now = Date.now();
 
@@ -95,13 +93,13 @@ app.get('/api/dashboard', (req, res) => {
     });
 });
 
-/* ===== FRONTEND ===== */
+/* ===== FRONTEND DASHBOARD ===== */
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-<title>ESP32 Advanced Monitor</title>
+<title>ESP32 Device Monitor PRO</title>
 <style>
 body { background:black; color:#00ff00; font-family:Courier New; text-align:center; }
 table { width:95%; margin:auto; border-collapse:collapse; margin-bottom:20px; }
@@ -114,8 +112,16 @@ th, td { padding:8px; border-bottom:1px solid #003300; }
 
 <h1>ESP32 DEVICE MONITOR PRO</h1>
 
-<h2>Device History</h2>
+<h2>WiFi Only</h2>
+<table><tbody id="wifiOnly"></tbody></table>
 
+<h2>Bluetooth Only</h2>
+<table><tbody id="bleOnly"></tbody></table>
+
+<h2>Connected on BOTH</h2>
+<table><tbody id="bothDevices"></tbody></table>
+
+<h2>Device History</h2>
 <table>
 <thead>
 <tr>
@@ -135,6 +141,18 @@ function fetchData(){
 fetch('/api/dashboard')
 .then(res=>res.json())
 .then(data=>{
+
+function fillSimple(id,list){
+let html="";
+list.forEach(mac=>{
+html+="<tr><td>"+mac+"</td></tr>";
+});
+document.getElementById(id).innerHTML = html;
+}
+
+fillSimple("wifiOnly", data.wifiOnly || []);
+fillSimple("bleOnly", data.bleOnly || []);
+fillSimple("bothDevices", data.bothDevices || []);
 
 let historyHTML="";
 for (let mac in data.history){
@@ -168,6 +186,7 @@ fetchData();
     `);
 });
 
+/* ===== START SERVER ===== */
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
